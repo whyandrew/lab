@@ -144,13 +144,41 @@ void initParticles(void)
 
    Probabilities should be uniform for the initial set.
  */
+ 
+ particle *prev, *next; // Pointers to the previous particle in the list (if any),
+                        //  and the most recently created one
 
- list=NULL;
+ double initial_prob = 1.0 / n_particles; // Initial probablitity for each particle
+                                           // (distributed evenly for a total of 1.0)
+  
+ prev = list = NULL; // Initially the list has no head, and there is no previous particle
 
- /***************************************************************
- // TO DO: Complete this function to generate an initially random
- //        list of particles.
- ***************************************************************/
+ for (int i=0; i<n_particles; i++)
+ {
+  next = initRobot(map, sx, sy); // Try to create new particle to add to the list
+  
+  if (next == NULL) // initRobot() returned a null pointer so we can't proceed
+  {
+   fprintf(stderr, "Init particles failed, exiting. (Out of memory?)\n");
+   free(map);
+   free(map_b);
+   free(robot);
+   deleteList(list);
+   exit(0);
+  }
+  
+  next->prob = initial_prob;     // Set particle probablility
+   
+  if (prev==NULL) // First iteration, so the new particle will be head of the list
+  {
+   list = next;
+  }
+  else            // Not the first particle in the list, so link to the new particle 
+  {               // from the previous one
+   prev->next = next;
+  }
+  prev = next; // The particle created this time will be the "previous" one in
+ }             // the next loop iteration
 
 }
 
