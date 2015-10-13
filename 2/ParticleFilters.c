@@ -28,7 +28,6 @@
 */
 
 #include "ParticleFilters.h"
-
 /**********************************************************
  GLOBAL DATA
 **********************************************************/
@@ -42,7 +41,7 @@ int n_particles;		// Number of particles
 int windowID;               	// Glut window ID (for display)
 int Win[2];                 	// window (x,y) size
 int RESETflag;			// RESET particles
-
+double sigma = 20.0; // Sigma value for Gaussian PDR evaluation
 /**********************************************************
  PROGRAM CODE
 **********************************************************/
@@ -145,8 +144,8 @@ void initParticles(void)
    Probabilities should be uniform for the initial set.
  */
  
- particle *prev, *next; // Pointers to the previous particle in the list (if any),
-                        //  and the most recently created one
+ particle *prev, *curr; // Pointers to the previous particle in the list (if any),
+                        // and the most recently created one
 
  double initial_prob = 1.0 / n_particles; // Initial probablitity for each particle
                                            // (distributed evenly for a total of 1.0)
@@ -155,9 +154,9 @@ void initParticles(void)
 
  for (int i=0; i<n_particles; i++)
  {
-  next = initRobot(map, sx, sy); // Try to create new particle to add to the list
+  curr = initRobot(map, sx, sy); // Try to create new particle to add to the list
   
-  if (next == NULL) // initRobot() returned a null pointer so we can't proceed
+  if (curr == NULL) // initRobot() returned a null pointer so we can't proceed
   {
    fprintf(stderr, "Init particles failed, exiting. (Out of memory?)\n");
    free(map);
@@ -167,19 +166,18 @@ void initParticles(void)
    exit(0);
   }
   
-  next->prob = initial_prob;     // Set particle probablility
+  curr->prob = initial_prob;     // Set particle probablility
    
   if (prev==NULL) // First iteration, so the new particle will be head of the list
   {
-   list = next;
+   list = curr;
   }
   else            // Not the first particle in the list, so link to the new particle 
   {               // from the previous one
-   prev->next = next;
+   prev->next = curr;
   }
-  prev = next; // The particle created this time will be the "previous" one in
+  prev = curr; // The particle created this time will be the "previous" one in
  }             // the next loop iteration
-
 }
 
 void computeLikelihood(struct particle *p, struct particle *rob, double noise_sigma)
@@ -214,6 +212,12 @@ void computeLikelihood(struct particle *p, struct particle *rob, double noise_si
  // TO DO: Complete this function to calculate the particle's
  //        likelihood given the robot's measurements
  ****************************************************************/
+ double error_i; // Error value for sensor direction i
+ for (int i=0; i<16; i++)
+ {
+  error_i = (p->measureD[i])-(rob->measureD[i]);
+  p->prob *= GaussEval(error_i, sigma);
+ }
 
 }
 
@@ -231,6 +235,28 @@ void ParticleFilterLoop(void)
   struct particle *p,*pmax;
   char line[1024];
   // Add any local variables you need right below.
+  
+  int i; // Loop counter 
+  double total_prob = 0.0;
+  double move_distance = 5.0;
+  particle *curr = list; // Current particle, initially the one at the head of the list
+  
+  double normalized_total = 0.0; // Stores running total of normalized particle weights
+  double weights[n_particles];   // Stores successive running totals of 
+                                  // normalized particle weights between 0 and 1. Used for
+                                  // binary search, to find indices that correspond to
+                                  // randomly chosen particles.
+  particle *particles[n_particles]; // Array of pointers to particles, ordered as in the
+                                    // linked list                  
+
+  
+  particle *prev;    // Previous particle while traversing original list (during resampling)
+  particle *new_list = NULL; // Pointer to head of new resampled list
+  double selection; // Holds random value in 0,1 used in selecting a particle to
+                     // copy to the new list during resampling
+  particle *curr_p_newlist; // Pointer to most newly created particle during resampling
+  particle *prev_p_newlist; // Pointer to the particle preceding the most newly created
+                            // one during resampling
 
   if (!first_frame)
   {
@@ -247,7 +273,21 @@ void ParticleFilterLoop(void)
    //
    //          Don't forget to move the robot the same distance!
    //
-
+   move(robot, move_distance);
+   //if (hit(robot, map, sx, sy)) {
+   // robot->theta = (robot->theta + 6.0) % 12.0
+   // move(robot, move_distance);
+   //}
+   while (curr != NULL)
+   {
+    move(curr, move_distance);
+    ground_truth(curr, map, sx, sy);
+    //if (hit(curr, map, sx, sy)) {
+    // curr->theta = (curr->theta + 6.0) % 12.0
+    // move(robot, move_distance);
+    //}
+    curr = curr->next;
+   }
    /******************************************************************
    // TO DO: Complete Step 1 and test it
    //        You should see a moving robot and sonar figure with
@@ -271,6 +311,25 @@ void ParticleFilterLoop(void)
    //        that agree with the robot's position/direction
    //        should be brightest.
    *******************************************************************/
+   
+   curr = list;
+   while (curr != NULL)
+   {
+    computeLikelihood(curr, robot, sigma);
+    total_prob += curr->prob;
+    curr = curr->next;
+   }
+   
+   i = 0;
+   curr = list;
+   while (curr != NULL)
+   {
+    particles[i] = curr;
+    curr->prob /= total_prob;
+    normalized_total += curr->prob;
+    weights[i++] = normalized_total;
+    curr = curr->next;
+   }
 
    // Step 4 - Resample particle set based on the probabilities. The goal
    //          of this is to obtain a particle set that better reflect our
@@ -294,7 +353,7 @@ void ParticleFilterLoop(void)
    //                      to release the memory for the current list
    //                      before you lose that pointer!
    //
-
+   
    /*******************************************************************
    // TO DO: Complete and test Step 4
    //        You should see most particles disappear except for
@@ -302,7 +361,85 @@ void ParticleFilterLoop(void)
    //        Hopefully the largest cluster will be on and around
    //        the robot's actual location/direction.
    *******************************************************************/
+   
+   prev_p_newlist = NULL; // Pointer to current particle in list being created
+   
+   for (i=0; i<n_particles; i++)
+   {
+    total_prob = 0.0;      // Running total of particle probabilities
+    selection = drand48(); // Random double in 0,1
+    curr = list;           // Current particle
+    
+    // Do a binary search for the particle corresponding to selection,
+    // based on a precalculated table of running total of particle probabilities.
+    // The target particle is the one for which total_prob has the least value
+    // not greater than selection. When the while loop terminates, upper_bound
+    // is the index of the selected particle.
+     
+    // To do: replace with something more efficient? Maybe put precalculated
+    // running totals into an array and do binary search?
+    
+    //int j = 0;
+    //while(total_prob<selection && curr != NULL)
+    //{
+    // total_prob += curr->prob;
+    // prev = curr;
+    // curr = curr->next;
+    // j++;
+    //}
+    int diff, guess;
+    int lower_bound = 0;
+    int upper_bound;
+    upper_bound = n_particles-1;
+    while ((diff = upper_bound - lower_bound) > 1)
+    {
+     guess = lower_bound + diff / 2;
+     if (weights[guess] <= selection)
+     {
+      lower_bound = guess;
+     }
+     else
+     {
+      upper_bound = guess;
+     }
+     //printf("Lower: %d upper: %d selection: %f guess: %f guess-1: %f\n", lower_bound, upper_bound, selection, weights[guess], weights[guess-1]);
+    }
+    //printf("%f *%f* %f\n", particles[guess-1]->prob, particles[guess]->prob, particles[guess+1]->prob);
+    //printf("lower %d upper %d guess %d\n", lower_bound, upper_bound, guess);
+    
+    
+    
+    // Allocate memory for new particle and check for failure
+    if ((curr_p_newlist = (particle*)calloc(1, sizeof(particle))) == NULL)
+    {
+     fprintf(stderr, "Resample particles failed, exiting. (Out of memory?)\n");
+     free(map);
+     free(map_b);
+     free(robot);
+     deleteList(list);
+     deleteList(new_list);
+     exit(0);
+    }
+    // Copy selected particle to the new one
+    *curr_p_newlist = *(particles[upper_bound]);//*prev;
+    
+    if (prev_p_newlist == NULL) // First particle in new list so we link it as head
+    {
+     new_list = curr_p_newlist;
+    }
+    else // Otherwise link the previous particle to the new one
+    {
+     prev_p_newlist->next = curr_p_newlist;
+    }
+    prev_p_newlist = curr_p_newlist; // Advance to next particle for next iteration
+   }
+   curr_p_newlist->next = NULL; // Make sure the final particle links to NULL,
+                                // instead of whatever the particle it was copied
+                                // from pointed to
 
+   deleteList(list); // Free memory from original list
+   list = new_list;  // Link "list" pointer to the new list
+   
   }  // End if (!first_frame)
 
   /***************************************************
