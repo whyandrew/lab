@@ -232,20 +232,37 @@ void move_bounce(struct particle *p, double dist)
     int i = 0;              // Count of tries for debugging purposes
     struct particle *copy;  // Copy of the particle to move
     
-    copy = (particle*)calloc(1, sizeof(particle));
-    do // Runs once if particle doesn't hit a wall, otherwise however many
-    {  // times it takes to randomly find a direction with no hit
-        *copy = *p;
-        if (hit_wall) // Wall has been hit, only executes after first loop iteration
-        {
-            printf("Hit obstacle. Try#%d, dist %f\n", ++i, dist);
-            copy->theta = 12.0 * drand48(); // Assign a random direction
-        }
-        move(copy, dist);
-        hit_wall = hit(copy, map, sx, sy);
-    } while (hit_wall);
-    *p = *copy;
-    free(copy);
+    // copy = (particle*)calloc(1, sizeof(particle));
+    // do // Runs once if particle doesn't hit a wall, otherwise however many
+    // {  // times it takes to randomly find a direction with no hit
+    //     *copy = *p;
+    //     if (hit_wall) // Wall has been hit, only executes after first loop iteration
+    //     {
+    //         printf("Hit obstacle. Try#%d, dist %f\n", ++i, dist);
+    //         copy->theta = 12.0 * drand48(); // Assign a random direction
+    //     }
+    //     move(copy, dist);
+    //     hit_wall = hit(copy, map, sx, sy);
+    // } while (hit_wall);
+    // *p = *copy;
+    // free(copy);
+
+    double copyx = p->x;
+    double copyy = p->y;
+    double copytheta = p->theta;
+
+    move(p, dist);
+    while (hit(p, map, sx, sy))
+    {
+        p->x = copyx;
+        p->y = copyy;
+        p->theta = 360.0 * drand48();
+        printf("Before move: %6.2f, %6.2f, %2.2f\n", p->x, p->y, p->theta);
+        move(p, dist);
+        printf("After move: %6.2f, %6.2f, %2.2f\n\n", p->x, p->y, p->theta);
+    }
+
+
 // move(p, dist);
 // if (hit(p, map, sx, sy))
 // {
