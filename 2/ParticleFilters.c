@@ -221,6 +221,58 @@ void computeLikelihood(struct particle *p, struct particle *rob, double noise_si
 
 }
 
+void move_bounce(struct particle *p, double dist)
+{
+ /* Move the particle forward by distance dist using the provided function
+ move(), and if this movement places the particle in contact with a solid object, 
+ move the particle in some random direction that takes the particle into an open
+ space again.
+ */
+ int hit_wall = 0;       // 1 if a wall has been hit, 0 otherwise
+ int i = 0;              // Count of tries for debugging purposes
+ struct particle *copy;  // Copy of the particle to move
+ 
+ copy = (particle*)calloc(1, sizeof(particle));
+ do // Runs once if particle doesn't hit a wall, otherwise however many
+ {  // times it takes to randomly find a direction with no hit
+  *copy = *p;
+  if (hit_wall) // Wall has been hit, only executes after first loop iteration
+  {
+   printf("Hit obstacle. Try#%d, dist %f\n", ++i, dist);
+   copy->theta = 12.0 * drand48(); // Assign a random direction
+  }
+  move(copy, dist);
+  hit_wall = hit(copy, map, sx, sy);
+ } while (hit_wall);
+ *p = *copy;
+ free(copy);
+// move(p, dist);
+// if (hit(p, map, sx, sy))
+// {
+//  copy = (particle*)calloc(1, sizeof(particle));
+//  
+//  int i = 0;
+// *copy = *p;
+//  while (hit(copy, map, sx, sy))  // Loop until it isn't hitting anything
+//  {
+//   *copy = *p;                     // Make a fresh copy
+//   //copy->theta = 12.0 * drand48(); // Assign a random direction
+//  
+//   // Reverse direction w/ slight random adjustment, and correct if we go over 12
+//   copy->theta += 6.0 + 6.0 * (drand48() - 0.5);
+//   copy->theta = (copy->theta <= 12) ? copy->theta : copy->theta - 12.0;
+//   
+//   printf("Hit obstacle. Try#%d: direction %f\n", i++, copy->theta);
+//   move(copy, dist * 5.0);               // Move forward in the new direction
+                                        // (farther to increase chance of clearing it)
+//  }
+
+//  *p = *copy; // After completion of the loop, the copy is free of obstacles,
+              // so we can copy it to p.
+//  free(copy); // Release memory used for the copy
+// }
+}
+
 void ParticleFilterLoop(void)
 {
  /*
@@ -238,7 +290,7 @@ void ParticleFilterLoop(void)
   
   int i; // Loop counter 
   double total_prob = 0.0;
-  double move_distance = 5.0;
+  double move_distance = 10.0;
   particle *curr = list; // Current particle, initially the one at the head of the list
   
   double normalized_total = 0.0; // Stores running total of normalized particle weights
@@ -273,14 +325,14 @@ void ParticleFilterLoop(void)
    //
    //          Don't forget to move the robot the same distance!
    //
-   move(robot, move_distance);
+   move_bounce(robot, move_distance);
    //if (hit(robot, map, sx, sy)) {
    // robot->theta = (robot->theta + 6.0) % 12.0
    // move(robot, move_distance);
    //}
    while (curr != NULL)
    {
-    move(curr, move_distance);
+    move_bounce(curr, move_distance);
     ground_truth(curr, map, sx, sy);
     //if (hit(curr, map, sx, sy)) {
     // curr->theta = (curr->theta + 6.0) % 12.0
