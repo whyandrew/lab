@@ -42,6 +42,7 @@ int windowID;                   // Glut window ID (for display)
 int Win[2];                     // window (x,y) size
 int RESETflag;          // RESET particles
 double sigma = 20.0; // Sigma value for Gaussian PDR evaluation
+unsigned int loopCount = 0;
 /**********************************************************
     PROGRAM CODE
 **********************************************************/
@@ -213,10 +214,21 @@ void computeLikelihood(struct particle *p, struct particle *rob, double noise_si
     //        likelihood given the robot's measurements
     ****************************************************************/
     double error_i; // Error value for sensor direction i
+    double power = 0.08;
+    double bestP = 0.024;
+    double errorSquared = 0.0;
+
+    // The highest prob from GaussEval() is ~0.024 (i.e. error==0, range of +/-0.5 from mean)
+    // Even with that, when multiply 16 times, the number will be very small leading to large
+    // rounding & lost of sig. digits error
+
     for (int i=0; i<16; i++)
     {
         error_i = (p->measureD[i])-(rob->measureD[i]);
-        p->prob *= GaussEval(error_i, sigma);
+        // This pow() will make scale the probabiliy closer to 1 so it won't get too small
+        p->prob *= pow(GaussEval(error_i, sigma), power);
+
+        //printf("error_i: %f; Gauss: %1.15f\n", error_i, GaussEval(error_i, sigma));
     }
 
 }
@@ -231,21 +243,6 @@ void move_bounce(struct particle *p, double dist)
     int hit_wall = 0;       // 1 if a wall has been hit, 0 otherwise
     int i = 0;              // Count of tries for debugging purposes
     struct particle *copy;  // Copy of the particle to move
-    
-    // copy = (particle*)calloc(1, sizeof(particle));
-    // do // Runs once if particle doesn't hit a wall, otherwise however many
-    // {  // times it takes to randomly find a direction with no hit
-    //     *copy = *p;
-    //     if (hit_wall) // Wall has been hit, only executes after first loop iteration
-    //     {
-    //         printf("Hit obstacle. Try#%d, dist %f\n", ++i, dist);
-    //         copy->theta = 12.0 * drand48(); // Assign a random direction
-    //     }
-    //     move(copy, dist);
-    //     hit_wall = hit(copy, map, sx, sy);
-    // } while (hit_wall);
-    // *p = *copy;
-    // free(copy);
 
     double copyx = p->x;
     double copyy = p->y;
@@ -257,37 +254,10 @@ void move_bounce(struct particle *p, double dist)
         p->x = copyx;
         p->y = copyy;
         p->theta = 360.0 * drand48();
-        printf("Before move: %6.2f, %6.2f, %2.2f\n", p->x, p->y, p->theta);
+        //printf("Before move: %6.2f, %6.2f, %2.2f\n", p->x, p->y, p->theta);
         move(p, dist);
-        printf("After move: %6.2f, %6.2f, %2.2f\n\n", p->x, p->y, p->theta);
+        //printf("After move: %6.2f, %6.2f, %2.2f\n\n", p->x, p->y, p->theta);
     }
-
-
-// move(p, dist);
-// if (hit(p, map, sx, sy))
-// {
-//  copy = (particle*)calloc(1, sizeof(particle));
-//  
-//  int i = 0;
-// *copy = *p;
-//  while (hit(copy, map, sx, sy))  // Loop until it isn't hitting anything
-//  {
-//   *copy = *p;                     // Make a fresh copy
-//   //copy->theta = 12.0 * drand48(); // Assign a random direction
-//  
-//   // Reverse direction w/ slight random adjustment, and correct if we go over 12
-//   copy->theta += 6.0 + 6.0 * (drand48() - 0.5);
-//   copy->theta = (copy->theta <= 12) ? copy->theta : copy->theta - 12.0;
-//   
-//   printf("Hit obstacle. Try#%d: direction %f\n", i++, copy->theta);
-//   move(copy, dist * 5.0);               // Move forward in the new direction
-                                                                                                                                                                // (farther to increase chance of clearing it)
-//  }
-
-//  *p = *copy; // After completion of the loop, the copy is free of obstacles,
-                                                        // so we can copy it to p.
-//  free(copy); // Release memory used for the copy
-// }
 }
 
 void ParticleFilterLoop(void)
@@ -366,6 +336,12 @@ void ParticleFilterLoop(void)
         // Step 2 - The robot makes a measurement - use the sonar
         sonar_measurement(robot,map,sx,sy);
 
+        // printf("H:%3.0f; %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f, %3.0f\n", 
+        //     robot->theta, robot->measureD[0], robot->measureD[1], robot->measureD[2], robot->measureD[3],
+        //     robot->measureD[4], robot->measureD[5], robot->measureD[6], robot->measureD[7],
+        //     robot->measureD[8], robot->measureD[9], robot->measureD[10], robot->measureD[11],
+        //     robot->measureD[12], robot->measureD[13], robot->measureD[14], robot->measureD[15]        );
+
         // Step 3 - Compute the likelihood for particles based on the sensor
         //          measurement. See 'computeLikelihood()' and call it for
         //          each particle. Once you have a likelihood for every
@@ -381,6 +357,8 @@ void ParticleFilterLoop(void)
         //        should be brightest.
         *******************************************************************/
         
+        loopCount++;
+
         curr = list;
         while (curr != NULL)
         {
@@ -433,10 +411,23 @@ void ParticleFilterLoop(void)
         
         prev_p_newlist = NULL; // Pointer to current particle in list being created
         
+        printf("Frame %d\n", loopCount);
+
+        // selecting evenly spread-weights of particles, instead of generating randoms
+        // This works since the particles generated at the beginning are random,
+        // and the weight distribution is also random-ish depending on initial particles
+
+        double weightSeg = 1.0 / n_particles;
+        double halfSeg = weightSeg / 2;
+
         for (i=0; i<n_particles; i++)
         {
             total_prob = 0.0;      // Running total of particle probabilities
-            selection = drand48(); // Random double in 0,1
+            //selection = drand48(); // Random double in 0,1
+            selection = (i * weightSeg) + halfSeg;
+
+            //printf("%1.15f, ", selection);
+            //printf("%1.5f, ", weights[i]);
             curr = list;           // Current particle
             
             // Do a binary search for the particle corresponding to selection,
@@ -448,14 +439,6 @@ void ParticleFilterLoop(void)
             // To do: replace with something more efficient? Maybe put precalculated
             // running totals into an array and do binary search?
             
-            //int j = 0;
-            //while(total_prob<selection && curr != NULL)
-            //{
-            // total_prob += curr->prob;
-            // prev = curr;
-            // curr = curr->next;
-            // j++;
-            //}
             int diff, guess;
             int lower_bound = 0;
             int upper_bound;
@@ -475,9 +458,7 @@ void ParticleFilterLoop(void)
             }
             //printf("%f *%f* %f\n", particles[guess-1]->prob, particles[guess]->prob, particles[guess+1]->prob);
             //printf("lower %d upper %d guess %d\n", lower_bound, upper_bound, guess);
-            
-            
-            
+
             // Allocate memory for new particle and check for failure
             if ((curr_p_newlist = (particle*)calloc(1, sizeof(particle))) == NULL)
             {
@@ -491,6 +472,44 @@ void ParticleFilterLoop(void)
             }
             // Copy selected particle to the new one
             *curr_p_newlist = *(particles[upper_bound]);//*prev;
+
+            // Add decreasing Gaussian noise to new particles x,y, theta
+            double factor = (20.0 + loopCount) / 20.0;
+            curr_p_newlist->x += GaussianNoise(0, sigma/factor);
+            if (curr_p_newlist->x < 0)
+            {
+                curr_p_newlist->x = 0;
+            }
+            else if (curr_p_newlist->x > sx-1)
+            {
+                curr_p_newlist->x = sx-1;
+            }
+
+            curr_p_newlist->y += GaussianNoise(0, sigma/factor);
+            if (curr_p_newlist->y < 0)
+            {
+                curr_p_newlist->y = 0;
+            }
+            else if (curr_p_newlist->y > sy-1)
+            {
+                curr_p_newlist->y = sy-1;
+            }
+
+            if (hit(curr_p_newlist, map, sx, sy))
+            {
+                curr_p_newlist->x = (particles[upper_bound])->x;
+                curr_p_newlist->y = (particles[upper_bound])->y;
+            }
+
+            curr_p_newlist->theta += GaussianNoise(0, sigma/factor);
+            if (curr_p_newlist->theta < 0.0)
+            {
+                curr_p_newlist->theta += 360.0;
+            }
+            else if (curr_p_newlist->theta > 360.0)
+            {
+                curr_p_newlist->theta -= 360.0;
+            }
             
             if (prev_p_newlist == NULL) // First particle in new list so we link it as head
             {
@@ -522,6 +541,8 @@ void ParticleFilterLoop(void)
         list=NULL;
         initParticles();
         RESETflag=0;
+        printf("RESET...\n");
+        loopCount = 0;
     }
     renderFrame(map,map_b,sx,sy,robot,list);
 
