@@ -1,0 +1,72 @@
+CSC C85 - Embedded Systems
+
+Lab 4 - Code optimization
+_______________________________________________________________________
+
+Team name:
+
+Name 1 (last, first):
+Student number 1:
+
+Name 2 (last, first):
+Student number 2:
+
+Name 3 (last, first):
+Student number 3:
+
+(Special: Lose marks for failing to complete the above)
+_______________________________________________________________________
+
+Questions:
+
+a) Look at the profiler output for vanilla_imageRescale(). Identify the
+   lines that you think are un-necessary bottlenecks (i.e. lines whose
+   CPU usage can be reduced or eliminated by careful coding).
+
+   List these bottleneck lines in descending order (i.e. the ones that
+   consume most time at the top) of CPU time. Please list
+	- The actual line of code
+	- The amount of time taken
+	(you can copy/paste from the profiler output)
+
+   For each line, explain why the line creates a bottleneck (in terms
+   of what you know about CPU architecture). I want specific reasons
+   why a line you listed takes a large chunk of CPU time.
+
+b) For each of the lines in a)
+
+   Describe what you did in fast_imageRescale() to reduce/resolve the
+   problem.
+
+   Explain why your improvement should work (again, based on what you
+   know about CPU architecture).
+
+
+c) Is there any part of the vanilla code that could not be optimized
+   at all? if so, which?
+
+d) Do you think you have achieved close to optimal performance on this
+   code? (yes/no)
+
+e) If your answer to d) is no, what could you do to further increase
+   performance?
+
+______________________________________________________________________
+
+Grading
+
+Attending lab and working hard -         	 	/10
+
+Programming exercise
+	- Competitive performance of your code	 	/60
+             Your FPS multiplier:     (Max:  )
+	- Style and code design			  	/10
+
+Answers in this report					/20
+
+Penalty marks (TA assigned)			  
+
+Total for First Lab Session:			   	/100 (*)
+
+(*) This mark is conditional to both members being able to explain
+    any part of the work when questioned.
